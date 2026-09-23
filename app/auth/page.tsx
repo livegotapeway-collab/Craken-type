@@ -39,13 +39,28 @@ export default function AuthPage() {
     if (!supabase) return;
     setBusy(true);
     setMessage("");
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       email: email.trim(),
       token: code.trim(),
       type: "email",
     });
+    if (error) {
+      setBusy(false);
+      return setMessage(error.message);
+    }
+    if (data.user) {
+      const base = (data.user.email?.split("@")[0] || "craken").toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 24) || "craken";
+      const username = `${base}_${data.user.id.slice(0, 6)}`;
+      const { error: profileError } = await supabase.from("profiles").upsert(
+        { id: data.user.id, username, full_name: base, country: "RDC" },
+        { onConflict: "id", ignoreDuplicates: true }
+      );
+      if (profileError) {
+        setBusy(false);
+        return setMessage("Connexion réussie, mais création du profil impossible : " + profileError.message);
+      }
+    }
     setBusy(false);
-    if (error) return setMessage(error.message);
     router.replace("/");
     router.refresh();
   }
@@ -55,47 +70,19 @@ export default function AuthPage() {
       <div className="auth-card">
         <div className="logo">Craken<span>-type</span></div>
         <h1>{sent ? "Entre le code reçu" : "Créer ton compte"}</h1>
-        <p>
-          {sent
-            ? "Un code à 6 chiffres a été envoyé à ton adresse e-mail."
-            : "Inscris-toi ou connecte-toi avec ton adresse e-mail."}
-        </p>
-
+        <p>{sent ? "Un code à 6 chiffres a été envoyé à ton adresse e-mail." : "Inscris-toi ou connecte-toi avec ton adresse e-mail."}</p>
         {!sent ? (
           <form onSubmit={sendCode}>
-            <input
-              type="email"
-              required
-              placeholder="ton@email.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-            />
-            <button type="submit" disabled={busy}>
-              {busy ? "Envoi…" : "Recevoir le code"}
-            </button>
+            <input type="email" required placeholder="ton@email.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            <button type="submit" disabled={busy}>{busy ? "Envoi…" : "Recevoir le code"}</button>
           </form>
         ) : (
           <form onSubmit={verifyCode}>
-            <input
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              required
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              autoComplete="one-time-code"
-            />
-            <button type="submit" disabled={busy}>
-              {busy ? "Vérification…" : "Vérifier le code"}
-            </button>
-            <button type="button" className="secondary" onClick={() => setSent(false)}>
-              Modifier l'e-mail
-            </button>
+            <input inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required placeholder="123456" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} autoComplete="one-time-code" />
+            <button type="submit" disabled={busy}>{busy ? "Vérification…" : "Vérifier le code"}</button>
+            <button type="button" className="secondary" onClick={() => setSent(false)}>Modifier l'e-mail</button>
           </form>
         )}
-
         {message && <div className="auth-message">{message}</div>}
         <button className="back" onClick={() => router.push("/")}>← Retour au fil</button>
       </div>
